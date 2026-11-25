@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from flask import Flask, request, abort
 
 from linebot.v3 import WebhookHandler
@@ -16,7 +17,7 @@ from google import genai
 
 app = Flask(__name__)
 
-# 從環境變數讀取金鑰（保護資安，不寫死在程式碼中）
+# 從環境變數讀取金鑰
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
@@ -27,7 +28,7 @@ gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def translate_text(text: str) -> str:
-    """使用 Gemini 進行繁體中文與印尼文雙向翻譯"""
+    """使用 Gemini 進行繁體中文與印尼文雙向翻譯（含 503 塞車自動重試與備援模型）"""
     prompt = f"""
 你是一位精通台灣繁體中文與印尼日常口語的專業雙向翻譯員。
 請判斷以下輸入文字的語言並執行翻譯：
@@ -38,15 +39,21 @@ def translate_text(text: str) -> str:
 輸入文字：
 {text}
 """
-    try:
-        response = gemini_client.models.generate_content(
-            model='gemini-3.8-flash',
-            contents=prompt,
-        )
-        return response.text.strip()
-    except Exception as e:
-        print(f"Gemini API 發生錯誤: {e}")
-        return "⚠️ 翻譯服務暫時忙碌中，請稍後再試。"
+    # 依序嘗試主力模型與輕量備援模型，避免單一模型瞬間塞車
+    models_to_try = ['gemini-3.8-flash', 'gemini-3.8-flash-lite']
+
+    for model_name in models_to_try:
+        try:
+            response = gemini_client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+            )
+            return response.text.strip()
+        except Exception as e:
+            print(f"模型 {model_name} 發生錯誤: {e}")
+            time.sleep(1)  # 稍等 1 秒後自動切換下一個模型重試
+
+    return "⚠️ 翻譯服務暫時忙碌中，請稍後再試。"
 
 
 @app.route("/", methods=['GET'])
