@@ -40,7 +40,7 @@ def translate_text(text: str) -> str:
 {text}
 """
     # 依序嘗試主力模型與輕量備援模型，避免單一模型瞬間塞車
-    models_to_try = ['gemini-3.8-flash', 'gemini-3.8-flash-lite']
+    models_to_try = ['gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.8-pro']
 
     for model_name in models_to_try:
         try:
